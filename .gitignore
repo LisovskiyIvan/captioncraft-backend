@@ -1,0 +1,11 @@
+vosk*
+venv*
+*.pyc
+*.pyd
+*.pyo
+*.pyz
+shorts-generator/
+res/
+__pycache__/
+
+.env
