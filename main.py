@@ -1,41 +1,40 @@
-from email.mime import base
 from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, status, Request, Form
 from fastapi.responses import JSONResponse
 from tempfile import NamedTemporaryFile
 import shutil
 import os
 from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
 from subs import create_shorts_video, extract_audio_from_video
 import uuid
-from fastapi.security import OAuth2PasswordRequestForm
 from auth import  authenticate_user, create_access_token, get_current_user, ACCESS_TOKEN_EXPIRE_MINUTES, get_password_hash
 from datetime import timedelta
-from database import engine, Base, SessionLocal, database
+from database import engine, Base, SessionLocal
 from sqlalchemy.orm import Session
 from user import create_user, get_user
-from models import UserCreate
+from models import UserCreate, User
 import base64
+from fastapi.security import OAuth2PasswordBearer
+from dotenv import load_dotenv
+from typing import List
+import asyncio
 
-
+# Загружаем переменные окружения
+load_dotenv()
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins; replace with a list of specific origins if needed
+    allow_origins=os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(","),
     allow_credentials=True,
     allow_methods=["*"],  # Allow all HTTP methods (GET, POST, PUT, etc.)
     allow_headers=["*"],  # Allow all headers; adjust as needed
 )
 
 @app.on_event("startup")
-async def startup():
-    await database.connect()
+def startup():
     Base.metadata.create_all(bind=engine)
-
-@app.on_event("shutdown")
-async def shutdown():
-    await database.disconnect()
 
 def get_db():
     db = SessionLocal()
@@ -44,9 +43,8 @@ def get_db():
     finally:
         db.close()
 
-
 @app.post("/register")
-async def create(user: UserCreate,db: Session = Depends(get_db)):
+async def create(user: UserCreate, db: Session = Depends(get_db)):
     oldUser = get_user(db, user.email)
     if oldUser:
          raise HTTPException(
@@ -71,7 +69,6 @@ async def create(user: UserCreate,db: Session = Depends(get_db)):
 async def read_user(user_id: int, db: Session = Depends(get_db)):
     return get_user(db=db, user_id=user_id)
 
-
 @app.post("/login")
 async def login_for_access_token(user: UserCreate, db: Session = Depends(get_db)):
     user = authenticate_user(db, user.email, user.password)
@@ -86,7 +83,6 @@ async def login_for_access_token(user: UserCreate, db: Session = Depends(get_db)
         data={"sub": user.email}, expires_delta=access_token_expires
     )
     return {"token": access_token, "token_type": "bearer"}
-
 
 @app.post("/generate/videoandaudio")
 async def upload_files(request: Request, video: UploadFile = File(...), audio: UploadFile = File(...), vosk: str = "vosk-model-small-en-us-0.15", db: Session = Depends(get_db)):
@@ -137,8 +133,6 @@ async def upload_files(request: Request, video: UploadFile = File(...), audio: U
         if os.path.exists(name):
             os.remove(name)
 
-
-
 @app.post("/generate/video")
 async def upload_files_without_audio(request: Request, video: UploadFile = File(...), vosk: str = "vosk-model-small-en-us-0.15", db: Session = Depends(get_db)):
     token = request.headers.get("Authorization").split(" ")[1]
@@ -187,9 +181,36 @@ async def upload_files_without_audio(request: Request, video: UploadFile = File(
         if os.path.exists(audio):
             os.remove(audio)
 
+@app.get("/api/profile")
+async def get_profile(request: Request, db: Session = Depends(get_db)):
+    # Получаем токен из заголовков запроса
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing authorization header",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    token = auth_header.split(" ")[1]
+    user = await get_current_user(db=db, token=token)
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # В будущем здесь можно добавить подсчет количества созданных видео
+    videos_count = 0  # Заглушка, пока нет таблицы с видео
+    
+    return {
+        "email": user.email,
+        "videos_count": videos_count,
+        "is_premium": not user.free_tier  # Упрощенная логика
+    }
 
-
-
-
-
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
 

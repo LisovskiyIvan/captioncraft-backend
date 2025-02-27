@@ -21,6 +21,7 @@ def transcribe_audio_to_srt(audio_path, vosk, output_srt, unique_id):
     recognizer = KaldiRecognizer(model, wf.getframerate())
     recognizer.SetWords(True)
     
+    has_content = False
     with open(output_srt, 'w', encoding='utf-8') as srt_file:
         idx = 1
         while True:
@@ -31,6 +32,7 @@ def transcribe_audio_to_srt(audio_path, vosk, output_srt, unique_id):
             if recognizer.AcceptWaveform(data):
                 result = json.loads(recognizer.Result())
                 for word in result.get('result', []):
+                    has_content = True
                     start_time = word['start']
                     end_time = word['end']
                     start_srt = format_timestamp(start_time)
@@ -43,6 +45,7 @@ def transcribe_audio_to_srt(audio_path, vosk, output_srt, unique_id):
                     idx += 1
         final_result = json.loads(recognizer.FinalResult())
         for word in final_result.get('result', []):
+            has_content = True
             start_time = word['start']
             end_time = word['end']
             start_srt = format_timestamp(start_time)
@@ -56,6 +59,11 @@ def transcribe_audio_to_srt(audio_path, vosk, output_srt, unique_id):
 
     wf.close()
     os.remove(wav_path)
+    
+    if not has_content:
+        os.remove(output_srt)
+        raise ValueError("Не удалось распознать речь в аудиофайле")
+        
     print(f"SRT file saved at: {output_srt}")
 
 def format_timestamp(seconds):
@@ -68,16 +76,14 @@ def format_timestamp(seconds):
 
 def add_subtitles_to_video(video_file, audio_file, srt_file='subtitles.srt', output_file='output_shorts.mp4'):
     if not os.path.exists(video_file):
-        print(f"Видеофайл '{video_file}' не найден")
-        return
+        raise FileNotFoundError(f"Видеофайл '{video_file}' не найден")
 
     if not os.path.exists(audio_file):
-        print(f"Аудиофайл '{audio_file}' не найден")
-        return
+        raise FileNotFoundError(f"Аудиофайл '{audio_file}' не найден")
 
     if not os.path.exists(srt_file):
-        print(f"Файл субтитров '{srt_file}' не найден")
-        return
+        raise FileNotFoundError(f"Файл субтитров '{srt_file}' не найден")
+
     command = [
         "ffmpeg",
         "-y",
@@ -116,10 +122,12 @@ def extract_audio_from_video(video_file, output_audio_file):
 
 
 def create_shorts_video(video_file, audio_file, vosk='vosk-model-small-en-us-0.15', output_file="output_shorts.mp4", srt_file='subtitles.srt'):
-    transcribe_audio_to_srt(audio_file, vosk, srt_file, output_file )
-    add_subtitles_to_video(video_file, audio_file, srt_file, output_file)
-    if os.path.exists(srt_file):
-        os.remove(srt_file)
-        print(f"Временный файл {srt_file} удален.")
+    try:
+        transcribe_audio_to_srt(audio_file, vosk, srt_file, output_file)
+        add_subtitles_to_video(video_file, audio_file, srt_file, output_file)
+    finally:
+        if os.path.exists(srt_file):
+            os.remove(srt_file)
+            print(f"Временный файл {srt_file} удален.")
 
 
