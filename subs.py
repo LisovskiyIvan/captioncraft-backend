@@ -89,7 +89,7 @@ def add_subtitles_to_video(video_file, audio_file, srt_file='subtitles.srt', out
         "-y",
         "-i", video_file,
         "-i", audio_file,
-        "-vf", f"subtitles={srt_file}:force_style='Alignment=2,Fontsize=22,MarginV=35'",
+        "-vf", f"subtitles={srt_file}:force_style='Alignment=2,Fontsize=24,MarginV=35,FontName=Arial,Bold=1,PrimaryColour=&HFFFFFF,OutlineColour=&H000000,Outline=2,Shadow=1,BorderStyle=1'",
         "-c:v", "h264",
         "-c:a", "aac",
         "-preset", "fast",
